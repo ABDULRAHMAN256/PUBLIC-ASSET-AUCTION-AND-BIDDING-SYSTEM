@@ -1,0 +1,7 @@
+﻿node_modules/
+auction.db
+auction.db-wal
+auction.db-shm
+.env
+*.log
+.DS_Store
