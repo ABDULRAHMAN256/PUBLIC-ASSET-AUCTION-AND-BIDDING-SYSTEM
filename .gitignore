@@ -5,3 +5,7 @@ auction.db-shm
 .env
 *.log
 .DS_Store
+venv/
+__pycache__/
+*.pyc
+*.pyo
