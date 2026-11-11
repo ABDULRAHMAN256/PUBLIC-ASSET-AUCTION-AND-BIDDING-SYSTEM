@@ -1,25 +1,21 @@
-﻿# main.py — FastAPI application entry point
+# main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from database import init_db
-from routes import auth
-
+from routes import auth, assets
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    print("[db] tables created / verified")
+    print("[db] initialized")
     yield
-
 
 app = FastAPI(
     title="Uganda Public Asset Auction API",
     version="1.0.0",
-    description="Backend for the Public Asset Auction and Bidding System.",
     lifespan=lifespan,
 )
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,10 +23,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 @app.get("/api/health", tags=["System"])
 def health():
     return {"ok": True}
 
-
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+app.include_router(assets.router, prefix="/api/assets", tags=["Assets"])
