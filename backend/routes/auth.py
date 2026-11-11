@@ -1,47 +1,48 @@
-﻿# routes/auth.py — Register and Login endpoints
-from fastapi import APIRouter, HTTPException
-from database import get_db
-from models import RegisterRequest, LoginRequest
+# routes/auth.py
+from fastapi import APIRouter, HTTPException, Depends
+from sqlmodel import Session, select
+from database import get_session
+from models import User, RegisterRequest, LoginRequest
 from auth import hash_password, verify_password, create_access_token
 from datetime import datetime, timezone
 
 router = APIRouter()
 
-@router.post("/register", status_code=201)
-def register(body: RegisterRequest):
-    conn = get_db()
-    cursor = conn.cursor()
 
-    cursor.execute("SELECT 1 FROM users WHERE username = ? OR email = ?", (body.username, body.email))
-    if cursor.fetchone():
-        conn.close()
+@router.post("/register", status_code=201)
+def register(body: RegisterRequest, session: Session = Depends(get_session)):
+    existing = session.exec(
+        select(User).where((User.username == body.username) | (User.email == body.email))
+    ).first()
+    if existing:
         raise HTTPException(status_code=400, detail="Username or email already exists")
 
-    now = datetime.now(timezone.utc).isoformat()
-    hashed = hash_password(body.password)
-
-    cursor.execute(
-        "INSERT INTO users (username, email, password_hash, full_name, phone, role, kyc_status, created_at) "
-        "VALUES (?, ?, ?, ?, ?, 'bidder', 'pending', ?)",
-        (body.username, body.email, hashed, body.full_name, body.phone, now)
+    new_user = User(
+        username=body.username,
+        email=body.email,
+        password_hash=hash_password(body.password),
+        full_name=body.full_name,
+        phone=body.phone,
+        role="bidder",
+        kyc_status="pending",
+        created_at=datetime.now(timezone.utc),
     )
-    conn.commit()
-    user_id = cursor.lastrowid
-    conn.close()
+    session.add(new_user)
+    session.commit()
+    session.refresh(new_user)
 
-    token = create_access_token(user_id, "bidder")
-    return {"token": token, "user_id": user_id}
+    token = create_access_token(new_user.user_id, "bidder")
+    return {"token": token, "user_id": new_user.user_id}
+
 
 @router.post("/login")
-def login(body: LoginRequest):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id, password_hash, role FROM users WHERE username = ? OR email = ?", (body.username, body.username))
-    row = cursor.fetchone()
-    conn.close()
+def login(body: LoginRequest, session: Session = Depends(get_session)):
+    user = session.exec(
+        select(User).where((User.username == body.username) | (User.email == body.username))
+    ).first()
 
-    if not row or not verify_password(body.password, row["password_hash"]):
+    if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    token = create_access_token(row["user_id"], row["role"])
+    token = create_access_token(user.user_id, user.role)
     return {"token": token}

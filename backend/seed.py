@@ -1,82 +1,75 @@
-﻿# seed.py — insert sample data for testing / demo
-from database import get_db, init_db
-from passlib.context import CryptContext
-from datetime import datetime, timezone, timedelta
-
-# Ensure schema exists before we insert (idempotent — safe to call every time)
-init_db()
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-now = datetime.now(timezone.utc).isoformat()
-
-conn = get_db()
-cursor = conn.cursor()
-
-cursor.execute("SELECT COUNT(*) AS c FROM users")
-if cursor.fetchone()["c"] > 0:
-    print("[seed] Users exist. Delete auction.db to reseed.")
-    raise SystemExit(0)
+﻿# seed.py — Insert sample data using SQLModel Session
+from sqlmodel import Session, select
+from database import engine, init_db
+from models import User, Category, Asset, AssetImage
+from auth import hash_password
+from datetime import datetime, timedelta, timezone
 
 
-def add_user(username, email, password, full_name, phone, role, kyc):
-    cursor.execute(
-        "INSERT INTO users (username, email, password_hash, full_name, phone, role, kyc_status, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (username, email, pwd_context.hash(password), full_name, phone, role, kyc, now),
-    )
-    return cursor.lastrowid
+def seed():
+    init_db()
+    with Session(engine) as session:
+        if session.exec(select(User)).first():
+            print("[seed] Users exist. Delete auction.db to reseed.")
+            return
+
+        for name in ["Vehicles", "Real Estate", "Equipment"]:
+            session.add(Category(name=name))
+        session.commit()
+
+        users = [
+            User(username="admin", email="admin@upauction.ug", password_hash=hash_password("admin123"),
+                 full_name="System Admin", phone="+256700000000", role="admin", kyc_status="approved",
+                 created_at=datetime.now(timezone.utc)),
+            User(username="seller_mot", email="s1@upauction.ug", password_hash=hash_password("seller123"),
+                 full_name="Ministry of Transport", phone="+256711111111", role="seller", kyc_status="approved",
+                 created_at=datetime.now(timezone.utc)),
+            User(username="seller_lands", email="s2@upauction.ug", password_hash=hash_password("seller123"),
+                 full_name="Lands Commission", phone="+256722222222", role="seller", kyc_status="approved",
+                 created_at=datetime.now(timezone.utc)),
+            User(username="bidder_john", email="john@upauction.ug", password_hash=hash_password("bidder123"),
+                 full_name="John Doe", phone="+256733333333", role="bidder", kyc_status="approved",
+                 created_at=datetime.now(timezone.utc)),
+        ]
+        for u in users:
+            session.add(u)
+        session.commit()
+
+        sm = session.exec(select(User).where(User.username == "seller_mot")).first()
+        sl = session.exec(select(User).where(User.username == "seller_lands")).first()
+        veh = session.exec(select(Category).where(Category.name == "Vehicles")).first()
+        prop = session.exec(select(Category).where(Category.name == "Real Estate")).first()
+        eq = session.exec(select(Category).where(Category.name == "Equipment")).first()
+        now = datetime.now(timezone.utc)
+
+        assets = [
+            Asset(seller_id=sm.user_id, category_id=veh.category_id, title="Toyota Land Cruiser V8",
+                  description="Ex-Ministry.", starting_price=45000000, reserve_price=60000000,
+                  min_increment=500000, current_price=45000000, status="live",
+                  start_time=now - timedelta(days=1), end_time=now + timedelta(days=2), created_at=now),
+            Asset(seller_id=sl.user_id, category_id=prop.category_id, title="Plot 0.5 Acres Kololo",
+                  description="Freehold title.", starting_price=800000000, reserve_price=900000000,
+                  min_increment=10000000, current_price=800000000, status="upcoming",
+                  start_time=now + timedelta(days=3), end_time=now + timedelta(days=10), created_at=now),
+            Asset(seller_id=sm.user_id, category_id=eq.category_id, title="JCB 3CX Backhoe",
+                  description="Ex-UNRA.", starting_price=120000000, reserve_price=150000000,
+                  min_increment=1000000, current_price=120000000, status="live",
+                  start_time=now - timedelta(days=2), end_time=now + timedelta(hours=6), created_at=now),
+        ]
+        for a in assets:
+            session.add(a)
+        session.commit()
+
+        for aid, url in [
+            (assets[0].asset_id, "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=800"),
+            (assets[1].asset_id, "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800"),
+            (assets[2].asset_id, "https://images.unsplash.com/photo-1581094794329-c8112a89af12?w=800"),
+        ]:
+            session.add(AssetImage(asset_id=aid, file_path=url, is_primary=True))
+        session.commit()
+
+        print("Seed complete.")
 
 
-for name in ["Vehicles", "Real Estate", "Equipment"]:
-    cursor.execute("INSERT INTO categories (name) VALUES (?)", (name,))
-
-
-add_user("admin",        "admin@upauction.ug", "admin123",  "System Admin",           "+256700000000", "admin",  "approved")
-add_user("seller_mot",   "s1@upauction.ug",    "seller123", "Ministry of Transport",  "+256711111111", "seller", "approved")
-add_user("seller_lands", "s2@upauction.ug",    "seller123", "Lands Commission",       "+256722222222", "seller", "approved")
-add_user("bidder_john",  "john@upauction.ug",  "bidder123", "John Doe",               "+256733333333", "bidder", "approved")
-
-
-cursor.execute("SELECT user_id FROM users WHERE username='seller_mot'")
-s1 = cursor.fetchone()["user_id"]
-cursor.execute("SELECT user_id FROM users WHERE username='seller_lands'")
-s2 = cursor.fetchone()["user_id"]
-cursor.execute("SELECT category_id FROM categories WHERE name='Vehicles'")
-cVeh = cursor.fetchone()["category_id"]
-cursor.execute("SELECT category_id FROM categories WHERE name='Real Estate'")
-cProp = cursor.fetchone()["category_id"]
-cursor.execute("SELECT category_id FROM categories WHERE name='Equipment'")
-cEq = cursor.fetchone()["category_id"]
-
-
-def iso(**kw):
-    return (datetime.now(timezone.utc) + timedelta(**kw)).isoformat()
-
-
-def add_asset(seller, cat, title, desc, sp, rp, inc, status, start, end):
-    cursor.execute(
-        "INSERT INTO assets (seller_id, category_id, title, description, starting_price, "
-        "reserve_price, min_increment, current_price, status, start_time, end_time, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (seller, cat, title, desc, sp, rp, inc, sp, status, start, end, now),
-    )
-    return cursor.lastrowid
-
-
-a1 = add_asset(s1, cVeh,  "Toyota Land Cruiser V8", "Ex-Ministry.",     45000000.00, 60000000.00,   500000.00, "live",     iso(days=-1), iso(days=2))
-a2 = add_asset(s2, cProp, "Plot 0.5 Acres Kololo",  "Freehold title.", 800000000.00, 900000000.00, 10000000.00, "upcoming", iso(days=3),  iso(days=10))
-a3 = add_asset(s1, cEq,   "JCB 3CX Backhoe",        "Ex-UNRA.",        120000000.00, 150000000.00,  1000000.00, "live",     iso(days=-2), iso(hours=6))
-
-for asset_id, url in [
-    (a1, "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=800"),
-    (a2, "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800"),
-    (a3, "https://images.unsplash.com/photo-1581094794329-c8112a89af12?w=800"),
-]:
-    cursor.execute(
-        "INSERT INTO asset_images (asset_id, file_path, is_primary) VALUES (?, ?, 1)",
-        (asset_id, url),
-    )
-
-conn.commit()
-conn.close()
-print("Seed complete.")
+if __name__ == "__main__":
+    seed()
