@@ -6,7 +6,7 @@
 - NABUKEERA MARIAM (Docs)
 
 ## Structure
-- backend/ - Node.js + Express + SQLite REST API
+- backend/ - python, uvicorn + SQLite fastAPI
 - app/ - Flutter mobile app
 - docs/ - Design document and ERD
 
