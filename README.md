@@ -8,7 +8,7 @@ A real-time auction platform for Uganda public assets — government vehicles, l
 |---|---|---|
 | Kivumbi Adrian | 241-21301-7621 | Backend Lead |
 | Odong Jamil | 241-22302-7141| Flutter Lead |
-| Nabukeera Mariam | — | Analyst & Integration Lead |
+| Nabukeera Mariam |241-22302-7041 | Analyst & Integration Lead |
 
 ## Project Idea
 
